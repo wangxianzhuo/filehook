@@ -20,9 +20,14 @@ type FileHook struct {
 	RecreateFileInterval int64
 	Path                 string
 	LineBreak            string
-	File                 *os.File
+	File                 FileWriter
 	LatestFileCreateDate time.Time
 	Mux                  sync.Mutex
+}
+
+type FileWriter struct {
+	Mux sync.Mutex
+	*os.File
 }
 
 func NewFileHook(filePath, osType string, recreateFileInterval int64) (*FileHook, error) {
@@ -112,6 +117,9 @@ func (hook *FileHook) writeLog(entry *log.Entry) error {
 		level = "DEBU"
 	}
 	line = fmt.Sprintf("%s[%v] %-80s\t%s"+hook.LineBreak, level, entry.Time.Format("2006-01-02 15:04:05"), entry.Message, buffer.String())
+
+	hook.File.Mux.Lock()
+	defer hook.File.Mux.Unlock()
 	_, err = hook.File.Write([]byte(line))
 	if err != nil {
 		return err
@@ -143,7 +151,7 @@ func (hook *FileHook) createLogFile() error {
 	}
 	hook.File.Close()
 	hook.Mux.Lock()
-	hook.File = f
+	hook.File = FileWriter{File: f}
 	hook.Mux.Unlock()
 
 	hook.LatestFileCreateDate = now
