@@ -30,7 +30,7 @@ type FileWriter struct {
 	*os.File
 }
 
-func NewFileHook(filePath, osType string, recreateFileInterval int64) (*FileHook, error) {
+func New(filePath, osType string, recreateFileInterval int64) (*FileHook, error) {
 	hook := new(FileHook)
 
 	if filePath == "" {

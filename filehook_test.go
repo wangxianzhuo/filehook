@@ -8,7 +8,7 @@ import (
 )
 
 func Test_Hook(t *testing.T) {
-	hook, err := NewFileHook("", "windows", 10)
+	hook, err := New("", "windows", 10)
 	if err != nil {
 		t.Fatalf("init FileHook error: %v", err)
 	}
