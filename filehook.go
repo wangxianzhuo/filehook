@@ -73,6 +73,13 @@ func (hook *FileHook) Fire(entry *log.Entry) error {
 func (hook *FileHook) Levels() []log.Level {
 	return log.AllLevels
 }
+func (hook *FileHook) UseNewFile() error {
+	err := hook.createLogFile()
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
 func (hook *FileHook) writeLog(entry *log.Entry) error {
 	line, err := entry.String()
