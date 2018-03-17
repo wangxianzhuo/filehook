@@ -17,9 +17,9 @@ const VERSION = "0.0.2"
 
 // FileHook write log to a file
 // LineBreak can choose Windows or Unix-like
-// RecreateFileInterval new log file create interval, second
+// SegmentInterval new log file create interval, second
 type FileHook struct {
-	RecreateFileInterval int64
+	SegmentInterval      int64
 	Path                 string
 	LineBreak            string
 	File                 FileWriter
@@ -35,17 +35,17 @@ type FileWriter struct {
 }
 
 // New create the hook
-func New(filePath, osType string, recreateFileInterval int64) (*FileHook, error) {
+func New(filePath, osType string, segmentInterval int64) (*FileHook, error) {
 	hook := new(FileHook)
 	if filePath == "" {
 		hook.Path = "logs/"
 	} else {
 		hook.Path = filePath
 	}
-	if recreateFileInterval <= 0 {
-		hook.RecreateFileInterval = 60 * 60 * 24
+	if segmentInterval == 0 {
+		hook.SegmentInterval = 60 * 60 * 24
 	} else {
-		hook.RecreateFileInterval = recreateFileInterval
+		hook.SegmentInterval = segmentInterval
 	}
 	hook.LatestFileCreateDate = time.Now()
 	switch osType {
@@ -132,18 +132,19 @@ func (hook *FileHook) writeLog(entry *log.Entry) error {
 }
 
 func (hook *FileHook) fileAutoSegment(isInited bool) error {
-	if isInited {
+	if isInited && hook.SegmentInterval > 0 {
 		for {
 			now := time.Now()
-			recreateDate := hook.LatestFileCreateDate.Add(time.Duration(hook.RecreateFileInterval) * time.Second)
+			recreateDate := hook.LatestFileCreateDate.Add(time.Duration(hook.SegmentInterval) * time.Second)
 			if now.Before(recreateDate) {
 				time.Sleep(recreateDate.Sub(now))
 			}
 			hook.createLogFile()
 		}
-	} else {
+	} else if !isInited {
 		return hook.createLogFile()
 	}
+	return nil
 }
 
 func (hook *FileHook) createLogFile() error {
