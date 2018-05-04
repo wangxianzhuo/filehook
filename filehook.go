@@ -35,28 +35,36 @@ type FileWriter struct {
 }
 
 // New create the hook
-func New(filePath, osType string, segmentInterval int64) (*FileHook, error) {
+func New(option *Option) (*FileHook, error) {
 	hook := new(FileHook)
-	if filePath == "" {
+	if option == nil {
 		hook.Path = "logs/"
-	} else {
-		hook.Path = filePath
-	}
-	if segmentInterval == 0 {
 		hook.SegmentInterval = 60 * 60 * 24
+		hook.LineBreak = "\n"
+		hook.namePattern = "%YY-%MM-%DD_%HH-%mm-%SS.log"
 	} else {
-		hook.SegmentInterval = segmentInterval
+		if option.Path == "" {
+			hook.Path = "logs/"
+		} else {
+			hook.Path = option.Path
+		}
+		if option.SegmentInterval == 0 {
+			hook.SegmentInterval = 60 * 60 * 24
+		} else {
+			hook.SegmentInterval = option.SegmentInterval
+		}
+		if option.LineBreak == "" {
+			hook.LineBreak = "\n"
+		} else {
+			hook.LineBreak = option.LineBreak
+		}
+		if option.NamePattern == "" {
+			hook.namePattern = "%YY-%MM-%DD_%HH-%mm-%SS.log"
+		} else {
+			hook.namePattern = option.NamePattern
+		}
 	}
 	hook.LatestFileCreateDate = time.Now()
-	switch osType {
-	case "windows":
-		hook.LineBreak = "\r\n"
-	default:
-		hook.LineBreak = "\n"
-	}
-	if hook.namePattern == "" {
-		hook.namePattern = "%YY-%MM-%DD_%HH-%mm-%SS.log"
-	}
 
 	err := hook.fileAutoSegment(false)
 	if err != nil {

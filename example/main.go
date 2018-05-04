@@ -7,7 +7,12 @@ import (
 
 func main() {
 	// use default path(./log)
-	hook, err := filehook.New("", "windows", 0)
+	hook, err := filehook.New(&filehook.Option{
+		Path:            "./logs/",
+		SegmentInterval: 86400,
+		NamePattern:     "%YY-%MM-%DD_%HH-%mm-%SS.log",
+		LineBreak:       "\n",
+	})
 	if err != nil {
 		panic(err)
 	}
