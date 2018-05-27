@@ -35,7 +35,10 @@ func New(option *Option) (*FileHook, error) {
 	hook := new(FileHook)
 	parseOption(option)
 	hook.option = option
-	hook.formatter = new(FileFormatter)
+
+	f := new(FileFormatter)
+	f.LineBreak = option.File.LineBreak
+	hook.formatter = f
 
 	// run auto create log file routine
 	err := hook.createLogFile()
