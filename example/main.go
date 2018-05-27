@@ -1,18 +1,20 @@
 package main
 
 import (
+	"time"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/wangxianzhuo/filehook"
 )
 
 func main() {
-	// use default path(./log)
-	hook, err := filehook.New(&filehook.Option{
-		Path:            "./logs/",
-		SegmentInterval: 86400,
-		NamePattern:     "%YY-%MM-%DD_%HH-%mm-%SS.log",
-		LineBreak:       "\n",
-	})
+	hookConfig := filehook.NewOption()
+	hookConfig.Compress.Enable = true
+	hookConfig.Compress.Interval = 10
+
+	log.SetLevel(log.DebugLevel)
+
+	hook, err := filehook.New(hookConfig)
 	if err != nil {
 		panic(err)
 	}
@@ -23,4 +25,5 @@ func main() {
 	// time.Sleep(15 * time.Second)
 	log.Warnf("warn1")
 	log.Warnf("warn2")
+	time.Sleep(70 * time.Second)
 }

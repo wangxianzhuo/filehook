@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -19,13 +20,9 @@ const VERSION = "0.0.2"
 // LineBreak can choose Windows or Unix-like
 // SegmentInterval new log file create interval, second
 type FileHook struct {
-	SegmentInterval      int64
-	Path                 string
-	LineBreak            string
-	File                 FileWriter
-	LatestFileCreateDate time.Time
-	namePattern          string
-	mux                  sync.Mutex
+	File   FileWriter
+	option *Option
+	mux    sync.Mutex
 }
 
 // FileWriter ...
@@ -37,40 +34,18 @@ type FileWriter struct {
 // New create the hook
 func New(option *Option) (*FileHook, error) {
 	hook := new(FileHook)
-	if option == nil {
-		hook.Path = "logs/"
-		hook.SegmentInterval = 60 * 60 * 24
-		hook.LineBreak = "\n"
-		hook.namePattern = "%YY-%MM-%DD_%HH-%mm-%SS.log"
-	} else {
-		if option.Path == "" {
-			hook.Path = "logs/"
-		} else {
-			hook.Path = option.Path
-		}
-		if option.SegmentInterval == 0 {
-			hook.SegmentInterval = 60 * 60 * 24
-		} else {
-			hook.SegmentInterval = option.SegmentInterval
-		}
-		if option.LineBreak == "" {
-			hook.LineBreak = "\n"
-		} else {
-			hook.LineBreak = option.LineBreak
-		}
-		if option.NamePattern == "" {
-			hook.namePattern = "%YY-%MM-%DD_%HH-%mm-%SS.log"
-		} else {
-			hook.namePattern = option.NamePattern
-		}
-	}
-	hook.LatestFileCreateDate = time.Now()
+	parseOption(option)
+	hook.option = option
 
-	err := hook.fileAutoSegment(false)
+	// run auto create log file routine
+	err := hook.createLogFile()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create log file error: %v", err)
 	}
-	go hook.fileAutoSegment(true)
+	go hook.fileAutoSegment()
+
+	// run auto compress log files routine
+	go hook.autoCompress()
 
 	return hook, nil
 }
@@ -89,7 +64,7 @@ func (hook *FileHook) Levels() []log.Level {
 func (hook *FileHook) writeLog(entry *log.Entry) error {
 	line, err := entry.String()
 	if err != nil {
-		return err
+		return fmt.Errorf("file hook error: %v", err)
 	}
 	keys := make([]string, 0, len(entry.Data))
 	for k := range entry.Data {
@@ -127,39 +102,36 @@ func (hook *FileHook) writeLog(entry *log.Entry) error {
 	case log.DebugLevel:
 		level = "DEBU"
 	}
-	line = fmt.Sprintf("%s[%v] %-80s\t%s"+hook.LineBreak, level, entry.Time.Format("2006-01-02 15:04:05"), entry.Message, buffer.String())
+	line = fmt.Sprintf("%s[%v]\t%-80s\t%s"+hook.option.File.LineBreak, level, entry.Time.Format("2006-01-02 15:04:05"), entry.Message, buffer.String())
 
 	hook.File.mux.Lock()
 	defer hook.File.mux.Unlock()
 
-	_, err = hook.File.Write([]byte(line))
+	n, err := hook.File.WriteString(line)
 	if err != nil {
-		return err
+		return fmt.Errorf("file hook write %d to file[%v] error: %v", n, hook.File.File.Name(), err)
 	}
 	return nil
 }
 
-func (hook *FileHook) fileAutoSegment(isInited bool) error {
-	if isInited && hook.SegmentInterval > 0 {
-		for {
-			now := time.Now()
-			recreateDate := hook.LatestFileCreateDate.Add(time.Duration(hook.SegmentInterval) * time.Second)
-			if now.Before(recreateDate) {
-				time.Sleep(recreateDate.Sub(now))
+func (hook *FileHook) fileAutoSegment() {
+	ticker := time.NewTicker(time.Second * time.Duration(hook.option.File.Interval))
+	for {
+		select {
+		case <-ticker.C:
+			err := hook.createLogFile()
+			if err != nil {
+				log.Errorf("create log file error: %v", err)
+				return
 			}
-			hook.createLogFile()
 		}
-	} else if !isInited {
-		return hook.createLogFile()
 	}
-	return nil
 }
 
 func (hook *FileHook) createLogFile() error {
-	hook.LatestFileCreateDate = time.Now()
-	_, err := os.Stat(hook.Path)
+	_, err := os.Stat(hook.option.Path)
 	if err != nil && os.IsNotExist(err) {
-		err := os.Mkdir(hook.Path, 0777)
+		err := os.Mkdir(hook.option.Path, 0777)
 		if err != nil {
 			return err
 		}
@@ -167,26 +139,18 @@ func (hook *FileHook) createLogFile() error {
 		return err
 	}
 
-	fileName := parseNamePattern(hook.LatestFileCreateDate, hook.namePattern)
-	fileName = generateFileName(hook.Path+fileName, 0)
+	fileName := parseNamePattern(time.Now(), hook.option.NamePattern)
+	fileName = generateFileName(filepath.Join(hook.option.Path, fileName), 0)
+	fileName += hook.option.File.Ext
 
 	f, err := os.Create(fileName)
 	if err != nil {
-		return fmt.Errorf("Can't create a file hook, do not use log files, error: %v", err)
+		return fmt.Errorf("Can't create file %v, error: %v", fileName, err)
 	}
-	hook.File.Close()
 	hook.mux.Lock()
 	hook.File = FileWriter{File: f}
 	hook.mux.Unlock()
 	return nil
-}
-
-// SetFileNamePattern ...
-func (hook *FileHook) SetFileNamePattern(newPattern string) {
-	hook.mux.Lock()
-	defer hook.mux.Unlock()
-
-	hook.namePattern = newPattern
 }
 
 // parseNamePattern can configure:
