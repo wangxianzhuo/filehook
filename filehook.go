@@ -1,11 +1,9 @@
 package filehook
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,9 +18,10 @@ const VERSION = "0.0.2"
 // LineBreak can choose Windows or Unix-like
 // SegmentInterval new log file create interval, second
 type FileHook struct {
-	File   FileWriter
-	option *Option
-	mux    sync.Mutex
+	File      FileWriter
+	formatter log.Formatter
+	option    *Option
+	mux       sync.Mutex
 }
 
 // FileWriter ...
@@ -36,6 +35,7 @@ func New(option *Option) (*FileHook, error) {
 	hook := new(FileHook)
 	parseOption(option)
 	hook.option = option
+	hook.formatter = new(FileFormatter)
 
 	// run auto create log file routine
 	err := hook.createLogFile()
@@ -50,10 +50,18 @@ func New(option *Option) (*FileHook, error) {
 	return hook, nil
 }
 
+// SetFormatter set formatter
+func (hook *FileHook) SetFormatter(f log.Formatter) {
+	hook.mux.Lock()
+	defer hook.mux.Unlock()
+
+	hook.formatter = f
+}
+
 // Fire writes the log file to defined path.
 // User who run this function needs write permissions to the file or directory if the file does not yet exist.
 func (hook *FileHook) Fire(entry *log.Entry) error {
-	return hook.writeLog(entry)
+	return hook.write(entry)
 }
 
 // Levels returns configured log levels.
@@ -61,55 +69,17 @@ func (hook *FileHook) Levels() []log.Level {
 	return log.AllLevels
 }
 
-func (hook *FileHook) writeLog(entry *log.Entry) error {
-	line, err := entry.String()
+func (hook *FileHook) write(entry *log.Entry) error {
+	serialized, err := hook.formatter.Format(entry)
 	if err != nil {
-		return fmt.Errorf("file hook error: %v", err)
+		return fmt.Errorf("file hook format entry error: %v", err)
 	}
-	keys := make([]string, 0, len(entry.Data))
-	for k := range entry.Data {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	buffer := bytes.Buffer{}
-	for _, k := range keys {
-		buffer.WriteString(k)
-		buffer.WriteString("=")
-
-		switch value := entry.Data[k].(type) {
-		case string:
-			buffer.WriteString(value)
-		case error:
-			errmsg := value.Error()
-			buffer.WriteString(errmsg)
-		default:
-			fmt.Fprint(&buffer, value)
-		}
-		buffer.WriteString("\t")
-	}
-	var level string
-	switch entry.Level {
-	case log.PanicLevel:
-		level = "PANI"
-	case log.FatalLevel:
-		level = "FATA"
-	case log.ErrorLevel:
-		level = "ERRO"
-	case log.WarnLevel:
-		level = "WARN"
-	case log.InfoLevel:
-		level = "INFO"
-	case log.DebugLevel:
-		level = "DEBU"
-	}
-	line = fmt.Sprintf("%s[%v]\t%-80s\t%s"+hook.option.File.LineBreak, level, entry.Time.Format("2006-01-02 15:04:05"), entry.Message, buffer.String())
-
 	hook.File.mux.Lock()
 	defer hook.File.mux.Unlock()
 
-	n, err := hook.File.WriteString(line)
+	n, err := hook.File.WriteString(string(serialized))
 	if err != nil {
-		return fmt.Errorf("file hook write %d to file[%v] error: %v", n, hook.File.File.Name(), err)
+		return fmt.Errorf("file hook write %d bytes to file[%v] error: %v", n, hook.File.File.Name(), err)
 	}
 	return nil
 }

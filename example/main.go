@@ -18,6 +18,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	f := new(filehook.FileFormatter)
+	f.TimestampFormat = "2006-01-02 15:04:05.999999999"
+	hook.SetFormatter(f)
+
 	log.AddHook(hook)
 
 	log.Infof("info1")
